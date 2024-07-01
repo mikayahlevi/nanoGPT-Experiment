@@ -163,7 +163,6 @@ class GPT(nn.Module):
         x = (self.transformer.wte(idx) + self.transformer.wpe(pos)) / self.sqrt_two_constant.to(device)
         for block in self.transformer.h:
             x = block(x)
-        x = self.transformer.ln_f(x)
 
         if targets is not None:
             # if we are given some desired targets also calculate the loss
