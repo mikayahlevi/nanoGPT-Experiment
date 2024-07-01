@@ -1,5 +1,33 @@
+# this nanoGPT experiment
 
-# nanoGPT
+My idea for these experiments is to test the impact of 2 changes to langauge models: an MLP with a different structure, and the removal of normalization. 
+Instead of normalization, the code divides each activation by the expected standard deviation after the weights are initialized with a normal distribution.
+My MLP idea was similar, I calculated the standard deviation and mean of a normal distribution passed through an activation function, which I chose to be ELU. Then, the MLP composed of intermediate layer in which the activations are normalized manually each time based on the calculated standard deviation and mean.
+This experiment acheives a similar loss, but with significantly lower parameters.
+
+## Parameters
+
+| x                               | Vanilla nanoGPT | nanoGPT Experiment (3 intermediate layers) |
+| ------------------------------- | --------------- | ------------------------------------------ |
+|  Total Non-Embedding Parameters | 10.65M          | 6.22M                                      |
+|  Total MLP Parameters           | 7.07M           | 2.65M                                      |
+|  MLP Parameters per Block       | 1.17M           | 0.44M                                      |
+
+
+## shakespear-char
+
+|                                 | Vanilla nanoGPT | nanoGPT Experiment (3 intermediate layers) |
+| ------------------------------- | --------------- | ------------------------------------------ |
+|  Train Loss at Step 2500        | -               | 1.2784                                     |
+|  Train Loss at Step 5000        | -               | 1.1599                                     |
+|  Validation Loss at Step 2500   | -               | 1.5389                                     |
+|  Validation Loss at Step 5000   |  1.4697         | 1.4750                                     |
+
+
+
+# original nanoGPT information
+
+This section includes information from the original nanoGPT, not this repo.
 
 ![nanoGPT](assets/nanogpt.jpg)
 
