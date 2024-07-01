@@ -84,7 +84,7 @@ class Block(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.attn = CausalSelfAttention(config)
-        self.mlp = CustomMLP(config)
+        self.mlp = CustomMLP(config, 3)
 
         self.sqrt_two_constant = torch.tensor([math.sqrt(2)])
 
