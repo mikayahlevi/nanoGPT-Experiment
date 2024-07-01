@@ -93,7 +93,7 @@ class Block(nn.Module):
     def forward(self, x):
         x = self.dropout(x)
 
-        attn = (x + self.attn(x)) / self.sqrt_two_constant.to(x.device()
+        attn = (x + self.attn(x)) / self.sqrt_two_constant.to(x.device())
         out = (attn + self.mlp(attn)) / self.sqrt_two_constant.to(x.device())
         return out
 
