@@ -69,7 +69,7 @@ class CustomMLP(nn.Module):
         ])
 
         for layer in self.layers:
-            torch.nn.init.normal_(layer.weight, mean = 0, config.n_embd ** -0.5)
+            torch.nn.init.normal_(layer.weight, mean = 0, std = config.n_embd ** -0.5)
 
         self.mean_constant = torch.tensor([0.160520572266])
         self.std_constant = torch.tensor([0.786879001735])
