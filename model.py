@@ -23,7 +23,7 @@ class CausalSelfAttention(nn.Module):
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
 
-        torch.nn.init.normal_(self.c_attn.weight, mean=0, std=(config.n_embd ** -0.5))
+        torch.nn.init.normal_(self.c_attn.weight, mean=0, std=(1 / math.sqrt(config.n_embd)))
 
         self.n_head = config.n_head
         self.n_embd = config.n_embd
@@ -69,7 +69,7 @@ class CustomMLP(nn.Module):
         ])
 
         for layer in self.layers:
-            torch.nn.init.normal_(layer.weight, mean = 0, std = config.n_embd ** -0.5)
+            torch.nn.init.normal_(layer.weight, mean = 0, std = 1 / math.sqrt(config.n_embd))
 
         self.mean_constant = torch.tensor([0.160520572266])
         self.std_constant = torch.tensor([0.786879001735])
@@ -120,15 +120,9 @@ class GPT(nn.Module):
             wpe = nn.Embedding(config.block_size, config.n_embd),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
         ))
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        # with weight tying when using torch.compile() some warnings get generated:
-        # "UserWarning: functional_call was passed multiple values for tied weights.
-        # This behavior is deprecated and will be an error in future versions"
-        # not 100% sure what this is, so far seems to be harmless. TODO investigate
-        self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
-        self.sqrt_two_constant = torch.tensor([2 ** 0.5])
-        self.sqrt_embd_constant = torch.tensor([config.n_embd ** 0.5])
+        self.sqrt_two_constant = torch.tensor([math.sqrt(2)])
+        self.sqrt_embd_constant = torch.tensor([math.sqrt(config.n_embd)])
 
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
