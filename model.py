@@ -76,7 +76,7 @@ class CustomMLP(nn.Module):
     
     def forward(self, x):
         for layer in self.layers:
-            x = (torch.nn.functional.elu(layer(x)) - self.mean_constant.to(x.device()) / self.std_constant.to(x.device())
+            x = (torch.nn.functional.elu(layer(x)) - self.mean_constant.to(x.device())) / self.std_constant.to(x.device())
         return x
 
 class Block(nn.Module):
