@@ -91,6 +91,26 @@ class MLP(nn.Module):
         x = self.dropout(x)
         return x
 
+class CustomMLP(nn.Module):
+
+    def __init__(self, config, n_layers):
+        super().__init__()
+
+        self.layers = torch.nn.ModuleList([
+            torch.nn.Linear(config.n_embd, config.n_embd, bias = False) for _ in range(n_layers)
+        ])
+
+        for layer in self.layers:
+            torch.nn.init.normal_(layer.weight, mean = 0, std = 1 / math.sqrt(config.n_embd))
+
+        self.mean_constant = torch.tensor([0.160520572266], device = 'cuda')
+        self.std_constant = torch.tensor([0.786879001735], device = 'cuda')
+    
+    def forward(self, x):
+        for layer in self.layers:
+            x = (torch.nn.functional.elu(layer(x)) - self.mean_constant) / self.std_constant
+        return x
+
 class Block(nn.Module):
 
     def __init__(self, config):
@@ -98,7 +118,7 @@ class Block(nn.Module):
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
-        self.mlp = MLP(config)
+        self.mlp = CustomMLP(config)
 
     def forward(self, x):
         x = x + self.attn(self.ln_1(x))
