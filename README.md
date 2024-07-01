@@ -7,14 +7,14 @@ This experiment acheives a similar loss, but with significantly lower parameters
 
 ## Parameters
 
-| x                               | Vanilla nanoGPT | nanoGPT Experiment (3 intermediate layers) |
+|                                 | Vanilla nanoGPT | nanoGPT Experiment (3 intermediate layers) |
 | ------------------------------- | --------------- | ------------------------------------------ |
 |  Total Non-Embedding Parameters | 10.65M          | 6.22M                                      |
 |  Total MLP Parameters           | 7.07M           | 2.65M                                      |
 |  MLP Parameters per Block       | 1.17M           | 0.44M                                      |
 
 
-## shakespear-char
+## shakespeare-char
 
 |                                 | Vanilla nanoGPT | nanoGPT Experiment (3 intermediate layers) |
 | ------------------------------- | --------------- | ------------------------------------------ |
