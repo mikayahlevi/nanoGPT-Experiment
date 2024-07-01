@@ -61,11 +61,11 @@ class CausalSelfAttention(nn.Module):
 
 class CustomMLP(nn.Module):
 
-    def __init__(self, config, n_layers):
+    def __init__(self, config):
         super().__init__()
 
         self.layers = torch.nn.ModuleList([
-            torch.nn.Linear(config.n_embd, config.n_embd, bias = False) for _ in range(n_layers)
+            torch.nn.Linear(config.n_embd, config.n_embd, bias = False) for _ in range(config.n_intermediate_layers)
         ])
 
         for layer in self.layers:
@@ -84,7 +84,8 @@ class Block(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.attn = CausalSelfAttention(config)
-        self.mlp = CustomMLP(config, 3)
+        print(config.n_intermediate_layers)
+        self.mlp = CustomMLP(config)
 
         self.sqrt_two_constant = torch.tensor([math.sqrt(2)])
 
@@ -104,6 +105,7 @@ class GPTConfig:
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
+    n_intermediate_layers: int = 3
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
