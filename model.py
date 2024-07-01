@@ -15,17 +15,6 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-class LayerNorm(nn.Module):
-    """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
-
-    def __init__(self, ndim, bias):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(ndim))
-        self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
-
-    def forward(self, input):
-        return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
-
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
@@ -33,14 +22,12 @@ class CausalSelfAttention(nn.Module):
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
-        # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
-        # regularization
-        self.attn_dropout = nn.Dropout(config.dropout)
-        self.resid_dropout = nn.Dropout(config.dropout)
+
+        torch.nn.init.normal_(self.c_attn.weight, mean=0, std=(config.n_embd ** -0.5))
+
         self.n_head = config.n_head
         self.n_embd = config.n_embd
-        self.dropout = config.dropout
+
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         if not self.flash:
@@ -61,35 +48,16 @@ class CausalSelfAttention(nn.Module):
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
-            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, is_causal=True)
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
             att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
             att = F.softmax(att, dim=-1)
-            att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
 
-        # output projection
-        y = self.resid_dropout(self.c_proj(y))
-        return y
-
-class MLP(nn.Module):
-
-    def __init__(self, config):
-        super().__init__()
-        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu    = nn.GELU()
-        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        self.dropout = nn.Dropout(config.dropout)
-
-    def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
-        x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
+        return y / y.std(dim=-1, keepdim=True)
 
 class CustomMLP(nn.Module):
 
@@ -101,29 +69,33 @@ class CustomMLP(nn.Module):
         ])
 
         for layer in self.layers:
-            torch.nn.init.normal_(layer.weight, mean = 0, std = 1 / math.sqrt(config.n_embd))
+            torch.nn.init.normal_(layer.weight, mean = 0, config.n_embd ** -0.5)
 
-        self.mean_constant = torch.tensor([0.160520572266], device = 'cuda')
-        self.std_constant = torch.tensor([0.786879001735], device = 'cuda')
+        self.mean_constant = torch.tensor([0.160520572266])
+        self.std_constant = torch.tensor([0.786879001735])
     
     def forward(self, x):
         for layer in self.layers:
-            x = (torch.nn.functional.elu(layer(x)) - self.mean_constant) / self.std_constant
+            x = (torch.nn.functional.elu(layer(x)) - self.mean_constant.to(x.device()) / self.std_constant.to(x.device())
         return x
 
 class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = CustomMLP(config)
 
+        self.sqrt_two_constant = torch.tensor([math.sqrt(2)])
+
+        self.dropout = nn.Dropout(config.dropout)
+
     def forward(self, x):
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
-        return x
+        x = self.dropout(x)
+
+        attn = (x + self.attn(x)) / self.sqrt_two_constant.to(x.device()
+        out = (attn + self.mlp(attn)) / self.sqrt_two_constant.to(x.device())
+        return out
 
 @dataclass
 class GPTConfig:
@@ -146,9 +118,7 @@ class GPT(nn.Module):
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
-            drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = LayerNorm(config.n_embd, bias=config.bias),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
@@ -157,12 +127,8 @@ class GPT(nn.Module):
         # not 100% sure what this is, so far seems to be harmless. TODO investigate
         self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
-        # init all weights
-        self.apply(self._init_weights)
-        # apply special scaled init to the residual projections, per GPT-2 paper
-        for pn, p in self.named_parameters():
-            if pn.endswith('c_proj.weight'):
-                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+        self.sqrt_two_constant = torch.tensor([2 ** 0.5])
+        self.sqrt_embd_constant = torch.tensor([config.n_embd ** 0.5])
 
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
@@ -194,20 +160,18 @@ class GPT(nn.Module):
         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-        x = self.transformer.drop(tok_emb + pos_emb)
+        x = (self.transformer.wte(idx) + self.transformer.wpe(pos)) / self.sqrt_two_constant.to(device)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
 
         if targets is not None:
             # if we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
+            logits = x @ (self.transformer.wte.weight.t() / self.sqrt_embd_constant.to(device))
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         else:
             # inference-time mini-optimization: only forward the lm_head on the very last position
-            logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+            logits = x[:, [-1], :] @ (self.transformer.wte.weight.t() / self.sqrt_embd_constant.to(device))  # note: using list [-1] to preserve the time dim
             loss = None
 
         return logits, loss
